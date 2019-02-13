@@ -8,7 +8,19 @@
 
 #import <UIKit/UIKit.h>
 
-@interface JYGraphView : UIScrollView
+@protocol BSCGraphViewDelegate <NSObject>
+
+@optional
+
+- (void)viewDidScroll:(UIView *)view offset:(CGPoint)offset;
+
+@end
+
+@interface JYGraphView : UIView <UIScrollViewDelegate>
+
+@property (nonatomic, strong) UIScrollView *scrollView;
+
+@property (nonatomic, weak) id<BSCGraphViewDelegate> delegate;
 
 // Array of NSNumbers used to plot points on graph
 @property (strong, nonatomic) NSArray *graphData;
@@ -64,6 +76,9 @@
 
 // Colour of the background for the x and y axis UILabels
 @property (strong, nonatomic) UIColor *labelBackgroundColor;
+
+@property NSInteger yAxisWidth;
+@property (strong, nonatomic) NSString *title;
 
 - (void)plotGraphData;
 

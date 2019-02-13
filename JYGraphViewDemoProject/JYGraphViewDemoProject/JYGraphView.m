@@ -17,6 +17,11 @@ NSInteger const kPointLabelHeight = 20;
 @interface JYGraphView ()
 
 @property (nonatomic, strong) UIView *graphView;
+@property (nonatomic, strong) UIView *verticalView;
+@property (nonatomic, strong) UILabel *lowLabel;
+@property (nonatomic, strong) UILabel *midLabel;
+@property (nonatomic, strong) UILabel *highLabel;
+@property (nonatomic, strong) UILabel *topLabel;
 
 @end
 
@@ -78,57 +83,73 @@ NSInteger const kPointLabelHeight = 20;
     if (!self.strokeWidth) {
         self.strokeWidth = 2;
     }
+    if (!self.yAxisWidth) {
+        self.yAxisWidth = 15;
+    }
 }
 
 #pragma mark - Graph plotting
 
 - (void)plotGraphData
 {
+    if (_graphData == nil || _graphData.count == 0) {
+        return;
+    }
     self.userInteractionEnabled = YES;
     [self setDefaultValues];
     
-    self.graphView = [[UIView alloc] initWithFrame:self.frame];
-    self.backgroundColor = self.backgroundViewColor;
-    [self setContentSize:CGSizeMake(self.graphWidth, self.frame.size.height)];
-    [self addSubview:_graphView];
+    _scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(self.yAxisWidth, 0, self.frame.size.width - self.yAxisWidth, self.frame.size.height)];
+    _scrollView.delegate = self;
     
-    NSInteger xCoordOffset = (self.graphWidth / [_graphData count]) / 2;
-    [_graphView setFrame:CGRectMake(0 - xCoordOffset, 0, self.graphWidth, self.frame.size.height)];
-            
+    [self addSubview:_scrollView];
+    self.graphView = [[UIView alloc] initWithFrame:_scrollView.frame];
+    _scrollView.backgroundColor = self.backgroundViewColor;
+    [_scrollView setContentSize:CGSizeMake(self.graphWidth - 20, _scrollView.frame.size.height)];
+    [_scrollView addSubview:_graphView];
+    
+    NSInteger xCoordOffset = (self.graphWidth / [_graphData count]) - 10;
+    [_graphView setFrame:CGRectMake(0 - xCoordOffset, 0, self.graphWidth, _scrollView.frame.size.height)];
+    
     NSMutableArray *pointsCenterLocations = [[NSMutableArray alloc] init];
     
-    NSDictionary *graphRange = [self workOutRangeFromArray:_graphData];
-    NSInteger range = [[graphRange objectForKey:@"range"] integerValue];
-    NSInteger lowest = [[graphRange objectForKey:@"lowest"] integerValue];
-    NSInteger highest = [[graphRange objectForKey:@"highest"] integerValue];
+    NSArray *array = [_graphData sortedArrayUsingSelector:@selector(compare:)];
+    float lowest = [[array objectAtIndex:0] floatValue];
+    float highest = [[array objectAtIndex:[array count] - 1] floatValue];
+    float range = highest - lowest;
+    
+    //    NSDictionary *graphRange = [self workOutRangeFromArray:_graphData];
+    //    NSInteger range = [[graphRange objectForKey:@"range"] integerValue];
+    //    NSInteger lowest = [[graphRange objectForKey:@"lowest"] integerValue];
+    //    NSInteger highest = [[graphRange objectForKey:@"highest"] integerValue];
     
     // in case all numbers are zero or all the same value
     if (range == 0) {
         lowest = 0;
-        if (highest == 0) highest = 10; //arbitary number in case all numbers are 0
-        range = highest * 2;
+        if (highest == 0) {
+            highest = 50; //arbitary number in case all numbers are 0
+        }
+        range = highest;
     }
     
     CGPoint lastPoint = CGPointMake(0, 0);
     
+    NSInteger offsets = kPointLabelHeight + kPointLabelOffsetFromPointCenter;
+    if (_hideLabels == NO && _graphDataLabels != nil) {
+        offsets += kBarLabelHeight;
+    }
+    
+    NSInteger offSetFromTop = 10;
+    NSInteger offsetFromBottom = 10;
+    float screenHeight = (_scrollView.frame.size.height - (offsets)) / (_scrollView.frame.size.height + offSetFromTop + offsetFromBottom);
+    
+    
     for (NSUInteger counter = 1; counter <= [_graphData count]; counter++) {
-        
         NSInteger xCoord = (self.graphWidth / [_graphData count]) * counter;
-        
-        NSInteger offsets = kPointLabelHeight + kPointLabelOffsetFromPointCenter;
-        if (_hideLabels == NO && _graphDataLabels != nil) {
-            offsets += kBarLabelHeight;
-        }
-        
-        NSInteger offSetFromTop = 10;
-        NSInteger offsetFromBottom = 10;
-        float screenHeight = (self.frame.size.height - (offsets)) / (self.frame.size.height + offSetFromTop + offsetFromBottom);
-        
         CGPoint point = CGPointMake(xCoord,
-                                    self.frame.size.height - (([[_graphData objectAtIndex:counter - 1] integerValue] * 
-                                                               ((self.frame.size.height * screenHeight) / range)) - 
-                                                              (lowest * ((self.frame.size.height * screenHeight) / range ))+
-                                                              offsetFromBottom));
+                                    _scrollView.frame.size.height - (([[_graphData objectAtIndex:counter - 1] integerValue] *
+                                                                      ((_scrollView.frame.size.height * screenHeight) / range)) -
+                                                                     (lowest * ((_scrollView.frame.size.height * screenHeight) / range ))+
+                                                                     offsetFromBottom));
         
         [self createBackgroundVerticalBarWithXCoord:point withXAxisLabelIndex:counter-1];
         
@@ -162,6 +183,93 @@ NSInteger const kPointLabelHeight = 20;
                                fromArray:pointsCenterLocations];
     }
     
+    if (_verticalView == nil) {
+        _verticalView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.yAxisWidth, _scrollView.frame.size.height)];
+        _verticalView.backgroundColor = _scrollView.backgroundColor;
+        [self addSubview:_verticalView];
+    }
+    
+    CGPoint lowPoint = CGPointMake((self.graphWidth / [_graphData count]),
+                                   _scrollView.frame.size.height - ((lowest *
+                                                                     ((_scrollView.frame.size.height * screenHeight) / range)) -
+                                                                    (lowest * ((_scrollView.frame.size.height * screenHeight) / range ))+
+                                                                    offsetFromBottom));
+    if (_lowLabel == nil) {
+        _lowLabel = [[UILabel alloc] initWithFrame:CGRectMake(2, lowPoint.y - 5, self.yAxisWidth - 2, 8)];
+        [_verticalView addSubview:_lowLabel];
+    }
+    _lowLabel.text = [NSString stringWithFormat:@"%ld", (long)lowest];
+    _lowLabel.font = self.labelFont;
+    _lowLabel.textColor = self.labelFontColor;
+    _lowLabel.frame = CGRectMake(2, lowPoint.y - 5, self.yAxisWidth - 2, 8);
+    _lowLabel.center = CGPointMake(_lowLabel.center.x, lowPoint.y);
+    
+    float multiplier = 1.25;
+    CGPoint topPoint = CGPointMake((self.graphWidth / [_graphData count]),
+                                    _scrollView.frame.size.height - ((highest * multiplier *
+                                                                      ((_scrollView.frame.size.height * screenHeight) / range)) -
+                                                                     (lowest * ((_scrollView.frame.size.height * screenHeight) / range ))+
+                                                                     offsetFromBottom));
+    
+    CGFloat topOffset = _graphDataLabels.count > 0 ? kBarLabelHeight : 0;
+    if (topPoint.y < topOffset) {
+        multiplier = 1.1;
+        topPoint = CGPointMake((self.graphWidth / [_graphData count]),
+                                _scrollView.frame.size.height - ((highest * multiplier *
+                                                                  ((_scrollView.frame.size.height * screenHeight) / range)) -
+                                                                 (lowest * ((_scrollView.frame.size.height * screenHeight) / range ))+
+                                                                 offsetFromBottom));
+    }
+    
+    if (_topLabel == nil) {
+        _topLabel = [[UILabel alloc] initWithFrame:CGRectMake(2, topPoint.y - 5, self.yAxisWidth - 2, 8)];
+        [_verticalView addSubview:_topLabel];
+    }
+    _topLabel.text = [NSString stringWithFormat:@"%ld", (long)(highest * multiplier)];
+    _topLabel.font = _labelFont;
+    _topLabel.textColor = _labelFontColor;
+    _topLabel.frame = CGRectMake(2, topPoint.y - 5, self.yAxisWidth - 2, 8);
+    _topLabel.center = CGPointMake(_topLabel.center.x, topPoint.y);
+    
+    CGPoint highPoint = CGPointMake((self.graphWidth / [_graphData count]),
+                                    _scrollView.frame.size.height - ((highest *
+                                                                      ((_scrollView.frame.size.height * screenHeight) / range)) -
+                                                                     (lowest * ((_scrollView.frame.size.height * screenHeight) / range ))+
+                                                                     offsetFromBottom));
+    if (_highLabel == nil) {
+        _highLabel = [[UILabel alloc] initWithFrame:CGRectMake(2, highPoint.y - 5, self.yAxisWidth - 2, 8)];
+        [_verticalView addSubview:_highLabel];
+    }
+    _highLabel.text = [NSString stringWithFormat:@"%ld", (long)(highest)];
+    _highLabel.font = self.labelFont;
+    _highLabel.textColor = [UIColor redColor];
+    _highLabel.frame = CGRectMake(2, highPoint.y - 5, self.yAxisWidth - 2, 8);
+    _highLabel.center = CGPointMake(_highLabel.center.x, highPoint.y);
+    
+    float midValue = ((highest - lowest) / 2) + lowest;
+    CGPoint midPoint = CGPointMake((self.graphWidth / [_graphData count]),
+                                   _scrollView.frame.size.height - ((midValue *
+                                                                     ((_scrollView.frame.size.height * screenHeight) / range)) -
+                                                                    (lowest * ((_scrollView.frame.size.height * screenHeight) / range ))+
+                                                                    offsetFromBottom));
+    if (_midLabel == nil) {
+        _midLabel = [[UILabel alloc] initWithFrame:CGRectMake(2, midPoint.y - 5, self.yAxisWidth - 2, 8)];
+        [_verticalView addSubview:_midLabel];
+    }
+    _midLabel.text = [NSString stringWithFormat:@"%ld", (long)(midValue)];
+    _midLabel.font = self.labelFont;
+    _midLabel.textColor = self.labelFontColor;
+    _midLabel.frame = CGRectMake(2, midPoint.y - 5, self.yAxisWidth - 2, 8);
+    _midLabel.center = CGPointMake(_midLabel.center.x, midPoint.y);
+    
+    if (self.title != nil) {
+        UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 200, 20)];
+        titleLabel.text = self.title;
+        titleLabel.textColor = [UIColor lightGrayColor];
+        titleLabel.center = CGPointMake(self.frame.size.width/2, self.frame.size.height/2);
+        titleLabel.textAlignment = NSTextAlignmentCenter;
+        [self addSubview:titleLabel];
+    }
 }
 
 - (NSDictionary *)workOutRangeFromArray:(NSArray *)array
@@ -202,29 +310,32 @@ NSInteger const kPointLabelHeight = 20;
 - (void)createBackgroundVerticalBarWithXCoord:(CGPoint)xCoord
                           withXAxisLabelIndex:(NSInteger)indexNumber
 {
+    if (_graphDataLabels.count > 25 &&
+        indexNumber < _graphDataLabels.count - 1 &&
+        indexNumber % 5) {
+        return;
+    }
     CGFloat x = self.graphWidth % _graphData.count;
     
     // Update the frame size for graphData.count results that don't fit into graphWidth
-    [self setContentSize:CGSizeMake(self.graphWidth - x, self.frame.size.height)];
+    [_scrollView setContentSize:CGSizeMake(self.graphWidth - x, _scrollView.frame.size.height)];
     
-    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(0 , 0, (self.graphWidth / [_graphData count]) - kGapBetweenBackgroundVerticalBars, self.frame.size.height * 2)];
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(0 , 0, (self.graphWidth / [_graphData count]) - kGapBetweenBackgroundVerticalBars, _scrollView.frame.size.height * 2)];
     
     label.textAlignment = NSTextAlignmentCenter;
     
     [label setTextColor:self.labelXFontColor];
     [label setBackgroundColor:self.barColor];
-    [label setAdjustsFontSizeToFitWidth:YES];
     [label setMinimumScaleFactor:0.6];
     [label setFont:self.labelXFont];
-    [label setNumberOfLines:2];
     
     if (self.graphDataLabels) {
         label.text = [NSString stringWithFormat:@"%@",[self.graphDataLabels objectAtIndex:indexNumber]];
     }
-    
+    [label sizeToFit];
     [_graphView addSubview:label];
     
-    [label setCenter:CGPointMake(xCoord.x,16)];
+    [label setCenter:CGPointMake(xCoord.x, 10)];
 }
 
 - (void)drawLineBetweenPoint:(CGPoint)origin
@@ -249,7 +360,7 @@ NSInteger const kPointLabelHeight = 20;
     
     lineShape.path = linePath;
     CGPathRelease(linePath);
-        
+    
     [_graphView.layer addSublayer:lineShape];
     
     lineShape = nil;
@@ -312,7 +423,7 @@ NSInteger const kPointLabelHeight = 20;
     shapeView.fillColor = [UIColor clearColor].CGColor;
     shapeView.lineWidth = self.strokeWidth;
     [shapeView setLineCap:kCALineCapRound];
-        
+    
     [self.graphView.layer addSublayer:shapeView];
 }
 
@@ -349,8 +460,8 @@ NSInteger const kPointLabelHeight = 20;
 {
     // These lines are to prevent cutting off of image
     // on watch. Related to scrollview frame vs content size
-    CGRect scrollViewFrame = self.frame; // original frame to revert to
-    self.frame = _graphView.frame;
+    CGRect scrollViewFrame = _scrollView.frame; // original frame to revert to
+    _scrollView.frame = _graphView.frame;
     
     CGFloat scale = [self screenScale];
     
@@ -366,7 +477,7 @@ NSInteger const kPointLabelHeight = 20;
     UIGraphicsEndImageContext();
     
     // Now revert it
-    self.frame = scrollViewFrame;
+    _scrollView.frame = scrollViewFrame;
     
     return viewImage;
 }
@@ -376,6 +487,12 @@ NSInteger const kPointLabelHeight = 20;
         return [ [UIScreen mainScreen] scale];
     }
     return 1;
+}
+
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
+    if (_delegate) {
+        [_delegate viewDidScroll:self offset:scrollView.contentOffset];
+    }
 }
 
 @end
